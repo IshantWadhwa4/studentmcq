@@ -3,7 +3,7 @@ import json
 import requests
 import base64
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 
 # GitHub configuration
@@ -200,6 +200,10 @@ def main():
         st.session_state.student_info = None
     if 'test_completed' not in st.session_state:
         st.session_state.test_completed = False
+    if 'test_started' not in st.session_state:
+        st.session_state.test_started = False
+    if 'start_time' not in st.session_state:
+        st.session_state.start_time = None
     
     # Student information and test loading
     if not st.session_state.test_loaded:
@@ -255,7 +259,7 @@ def main():
         st.header(f"📖 {test_data['subject']} Test")
         
         # Display teacher and test information
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
             st.info(f"**Teacher:** {test_data.get('teacher_name', 'Unknown')}")
         with col2:
@@ -264,6 +268,18 @@ def main():
             st.info(f"**Questions:** {len(test_data['questions'])}")
         with col4:
             st.info(f"**Difficulty:** {test_data['difficulty']}")
+        with col5:
+            exam_duration = test_data.get('exam_duration_minutes', 60)
+            if exam_duration >= 60:
+                hours = exam_duration // 60
+                mins = exam_duration % 60
+                if mins > 0:
+                    duration_text = f"{hours}h {mins}m"
+                else:
+                    duration_text = f"{hours}h"
+            else:
+                duration_text = f"{exam_duration}m"
+            st.info(f"**Duration:** {duration_text}")
         
         if test_data.get('topics'):
             st.info(f"**Topics:** {', '.join(test_data['topics'])}")
@@ -276,25 +292,72 @@ def main():
             except:
                 st.info(f"**Created:** {test_data['created_at']}")
         
-        st.markdown("---")
-        
-        # Display questions
-        questions = test_data['questions']
-        student_answers = {}
-        
-        for i, question in enumerate(questions):
-            question_num = i + 1
-            selected_answer = display_question(question, question_num, len(questions))
-            if selected_answer:
-                student_answers[f"q_{question_num}"] = selected_answer
+        # Start Test Button or Timer Display
+        if not st.session_state.test_started:
             st.markdown("---")
-        
-        # Finish test button
-        if st.button("🏁 Finish Test", type="primary"):
-            if len(student_answers) < len(questions):
-                st.warning("⚠️ Please answer all questions before finishing the test.")
+            st.markdown("### 🚀 Ready to Start?")
+            st.markdown(f"⏰ **Time Limit:** {duration_text}")
+            st.warning("⚠️ Once you start the test, the timer will begin and cannot be paused!")
+            
+            if st.button("▶️ Start Test", type="primary", help="Click to start the timed test"):
+                st.session_state.test_started = True
+                st.session_state.start_time = datetime.now()
+                st.rerun()
+        else:
+            # Calculate remaining time
+            exam_duration_minutes = test_data.get('exam_duration_minutes', 60)
+            elapsed_time = datetime.now() - st.session_state.start_time
+            remaining_time = timedelta(minutes=exam_duration_minutes) - elapsed_time
+            
+            # Timer display
+            if remaining_time.total_seconds() > 0:
+                hours, remainder = divmod(int(remaining_time.total_seconds()), 3600)
+                minutes, seconds = divmod(remainder, 60)
+                
+                # Color coding for timer
+                if remaining_time.total_seconds() > 600:  # More than 10 minutes
+                    timer_color = "🟢"
+                elif remaining_time.total_seconds() > 300:  # More than 5 minutes
+                    timer_color = "🟡"
+                else:  # Less than 5 minutes
+                    timer_color = "🔴"
+                
+                st.markdown("---")
+                col_timer1, col_timer2, col_timer3 = st.columns([1, 2, 1])
+                with col_timer2:
+                    st.markdown(f"### {timer_color} Time Remaining: {hours:02d}:{minutes:02d}:{seconds:02d}")
+                
+                # Add JavaScript auto-refresh for timer
+                refresh_rate = 10 if remaining_time.total_seconds() > 300 else 5  # 10s if >5min left, 5s otherwise
+                st.markdown(
+                    f"""
+                    <script>
+                    setTimeout(function() {{
+                        window.location.reload();
+                    }}, {refresh_rate * 1000});
+                    </script>
+                    """,
+                    unsafe_allow_html=True
+                )
+                
+                st.markdown("*Timer updates automatically every few seconds*")
             else:
-                # Calculate score
+                # Time's up - auto submit
+                st.error("⏰ Time's up! Submitting your test automatically...")
+                
+                # Get current answers
+                questions = test_data['questions']
+                student_answers = {}
+                
+                # Try to get any submitted answers from session state if they exist
+                for i in range(len(questions)):
+                    question_num = i + 1
+                    # Check if answer exists in session state
+                    answer_key = f"q_{question_num}"
+                    if answer_key in st.session_state:
+                        student_answers[answer_key] = st.session_state[answer_key]
+                
+                # Auto-submit the test
                 score_data = calculate_score(questions, student_answers)
                 
                 # Create result data
@@ -309,9 +372,12 @@ def main():
                         "topics": test_data.get('topics', []),
                         "difficulty": test_data['difficulty'],
                         "created_at": test_data['created_at'],
-                        "total_questions": test_data.get('total_questions', len(questions))
+                        "total_questions": test_data.get('total_questions', len(questions)),
+                        "exam_duration_minutes": test_data.get('exam_duration_minutes', 60)
                     },
                     "completed_at": datetime.now().isoformat(),
+                    "time_taken_minutes": exam_duration_minutes,
+                    "auto_submitted": True,
                     "score": score_data
                 }
                 
@@ -332,6 +398,70 @@ def main():
                 st.session_state.test_completed = True
                 st.session_state.score_data = score_data
                 st.rerun()
+            
+            st.markdown("---")
+            
+            # Display questions
+            questions = test_data['questions']
+            student_answers = {}
+            
+            for i, question in enumerate(questions):
+                question_num = i + 1
+                selected_answer = display_question(question, question_num, len(questions))
+                if selected_answer:
+                    student_answers[f"q_{question_num}"] = selected_answer
+                st.markdown("---")
+            
+            # Finish test button
+            if st.button("🏁 Finish Test", type="primary"):
+                if len(student_answers) < len(questions):
+                    st.warning("⚠️ Please answer all questions before finishing the test.")
+                else:
+                    # Calculate actual time taken
+                    time_taken = datetime.now() - st.session_state.start_time
+                    time_taken_minutes = int(time_taken.total_seconds() / 60)
+                    
+                    # Calculate score
+                    score_data = calculate_score(questions, student_answers)
+                    
+                    # Create result data
+                    result_data = {
+                        "student_name": student_info['name'],
+                        "student_email": student_info['email'],
+                        "student_id": student_info['student_id'],
+                        "test_id": student_info['test_id'],
+                        "teacher_name": test_data.get('teacher_name', 'Unknown'),
+                        "test_info": {
+                            "subject": test_data['subject'],
+                            "topics": test_data.get('topics', []),
+                            "difficulty": test_data['difficulty'],
+                            "created_at": test_data['created_at'],
+                            "total_questions": test_data.get('total_questions', len(questions)),
+                            "exam_duration_minutes": test_data.get('exam_duration_minutes', 60)
+                        },
+                        "completed_at": datetime.now().isoformat(),
+                        "time_taken_minutes": time_taken_minutes,
+                        "auto_submitted": False,
+                        "score": score_data
+                    }
+                    
+                    # Save results to GitHub
+                    success, message = save_student_result_to_github(
+                        result_data, 
+                        student_info['name'].replace(' ', '_'), 
+                        student_info['test_id'],
+                        student_info['student_token']
+                    )
+                    
+                    if success:
+                        st.success("✅ Results saved successfully!")
+                    else:
+                        st.warning(f"⚠️ Could not save results: {message}")
+                    
+                    # Store results in session state
+                    st.session_state.test_completed = True
+                    st.session_state.score_data = score_data
+                    st.rerun()
     
     # Display results
     elif st.session_state.test_completed:
@@ -343,6 +473,8 @@ def main():
             st.session_state.test_data = None
             st.session_state.student_info = None
             st.session_state.test_completed = False
+            st.session_state.test_started = False
+            st.session_state.start_time = None
             st.rerun()
     
     # Information section
@@ -352,9 +484,19 @@ def main():
         1. **Enter Information**: Fill in your name and Test ID (email and student ID are optional)
         2. **Student Token**: Enter your GitHub Personal Access Token
         3. **Load Test**: Click "Load Test" to fetch the test questions
-        4. **Answer Questions**: Read each question carefully and select your answer
-        5. **Complete Test**: Click "Finish Test" when you've answered all questions
-        6. **View Results**: Get your score and detailed explanations
+        4. **Start Test**: Click "Start Test" to begin the timed exam
+        5. **Answer Questions**: Read each question carefully and select your answer
+        6. **Monitor Time**: Keep an eye on the countdown timer at the top
+        7. **Complete Test**: Click "Finish Test" when done or time will auto-submit
+        8. **View Results**: Get your score and detailed explanations
+        
+        ### Timer Features:
+        - ⏰ **Countdown Timer**: Shows exact time remaining in HH:MM:SS format
+        - 🟢 **Green Timer**: More than 10 minutes remaining
+        - 🟡 **Yellow Timer**: 5-10 minutes remaining  
+        - 🔴 **Red Timer**: Less than 5 minutes remaining
+        - 🔄 **Auto-Refresh**: Timer updates every 5-10 seconds automatically
+        - ⚡ **Auto-Submit**: Test submits automatically when time expires
         
         ### Test ID Format:
         - Test IDs follow the format: `TEACHERNAME_YYYYMMDD_XX`
@@ -362,18 +504,21 @@ def main():
         - Get this from your teacher
         
         ### Important Notes:
-        - Make sure to answer all questions before finishing
-        - You can review your answers before submitting
+        - ⚠️ **Timer cannot be paused** once you start the test
+        - Make sure you have a stable internet connection
+        - Answer all questions before time runs out
+        - Your progress is automatically saved
         - Results are automatically saved to GitHub
-        - Explanations are provided for each question
-        - The test shows teacher name and creation date
+        - The test shows teacher name, duration, and creation date
         
         ### Features:
-        - ✅ Interactive test interface
+        - ✅ Interactive test interface with timer
         - ✅ Teacher and test information display
+        - ✅ Real-time countdown timer with color coding
+        - ✅ Automatic submission when time expires
         - ✅ Instant scoring and feedback
         - ✅ Detailed explanations for each answer
-        - ✅ Results saved to GitHub
+        - ✅ Results saved to GitHub with time tracking
         """)
 
 if __name__ == "__main__":
