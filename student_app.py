@@ -316,31 +316,86 @@ def main():
                 
                 # Color coding for timer
                 if remaining_time.total_seconds() > 600:  # More than 10 minutes
-                    timer_color = "🟢"
+                    timer_color = "green"
+                    timer_bg = "#d4edda"
+                    timer_border = "#c3e6cb"
                 elif remaining_time.total_seconds() > 300:  # More than 5 minutes
-                    timer_color = "🟡"
+                    timer_color = "orange"
+                    timer_bg = "#fff3cd"
+                    timer_border = "#ffeaa7"
                 else:  # Less than 5 minutes
-                    timer_color = "🔴"
+                    timer_color = "red"
+                    timer_bg = "#f8d7da"
+                    timer_border = "#f5c6cb"
                 
+                # Main timer display
                 st.markdown("---")
                 col_timer1, col_timer2, col_timer3 = st.columns([1, 2, 1])
                 with col_timer2:
-                    st.markdown(f"### {timer_color} Time Remaining: {hours:02d}:{minutes:02d}:{seconds:02d}")
+                    st.markdown(f"### ⏰ Time Remaining: {hours:02d}:{minutes:02d}:{seconds:02d}")
+                    st.caption("Timer updates automatically every second. Scroll down to see sticky timer.")
                 
-                # Add JavaScript auto-refresh for timer
-                refresh_rate = 10 if remaining_time.total_seconds() > 300 else 5  # 10s if >5min left, 5s otherwise
+                # Sticky timer on the right side
                 st.markdown(
                     f"""
+                    <div style="
+                        position: fixed;
+                        top: 100px;
+                        right: 20px;
+                        background-color: {timer_bg};
+                        border: 2px solid {timer_border};
+                        border-radius: 10px;
+                        padding: 15px;
+                        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+                        z-index: 999;
+                        font-family: 'Courier New', monospace;
+                        text-align: center;
+                        min-width: 150px;
+                    ">
+                        <div style="
+                            font-size: 14px;
+                            font-weight: bold;
+                            color: #333;
+                            margin-bottom: 5px;
+                        ">⏰ TIME LEFT</div>
+                        <div style="
+                            font-size: 24px;
+                            font-weight: bold;
+                            color: {timer_color};
+                            letter-spacing: 2px;
+                        ">{hours:02d}:{minutes:02d}:{seconds:02d}</div>
+                        <div style="
+                            font-size: 12px;
+                            color: #666;
+                            margin-top: 5px;
+                        ">Auto-updating</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                
+                # Auto-refresh every second for real-time timer updates
+                st.markdown(
+                    """
                     <script>
-                    setTimeout(function() {{
+                    setTimeout(function() {
                         window.location.reload();
-                    }}, {refresh_rate * 1000});
+                    }, 1000);
                     </script>
                     """,
                     unsafe_allow_html=True
                 )
                 
-                st.markdown("*Timer updates automatically every few seconds*")
+                # Special warning for final minute
+                if remaining_time.total_seconds() <= 60:
+                    st.warning("⚠️ **Final Minute!** Time is running out!")
+                
+                # Also add a manual refresh mechanism
+                if st.button("🔄 Refresh Timer", key="refresh_timer", help="Click to update timer manually"):
+                    st.rerun()
+                
+                # Add note about timer updates
+                st.info("💡 **Timer Note:** Timer updates automatically every second. It also updates when you interact with the test.")
             else:
                 # Time's up - auto submit
                 st.error("⏰ Time's up! Submitting your test automatically...")
@@ -492,10 +547,11 @@ def main():
         
         ### Timer Features:
         - ⏰ **Countdown Timer**: Shows exact time remaining in HH:MM:SS format
+        - 📍 **Sticky Timer**: Fixed timer on right side that stays visible while scrolling
         - 🟢 **Green Timer**: More than 10 minutes remaining
-        - 🟡 **Yellow Timer**: 5-10 minutes remaining  
+        - 🟡 **Orange Timer**: 5-10 minutes remaining  
         - 🔴 **Red Timer**: Less than 5 minutes remaining
-        - 🔄 **Auto-Refresh**: Timer updates every 5-10 seconds automatically
+        - 🔄 **Real-time Updates**: Timer updates every second automatically
         - ⚡ **Auto-Submit**: Test submits automatically when time expires
         
         ### Test ID Format:
