@@ -328,17 +328,10 @@ def main():
                     timer_bg = "#f8d7da"
                     timer_border = "#f5c6cb"
                 
-                # Main timer display
-                st.markdown("---")
-                col_timer1, col_timer2, col_timer3 = st.columns([1, 2, 1])
-                with col_timer2:
-                    st.markdown(f"### ⏰ Time Remaining: {hours:02d}:{minutes:02d}:{seconds:02d}")
-                    st.caption("Timer updates automatically every second. Scroll down to see sticky timer.")
-                
-                # Sticky timer on the right side
+                # Sticky timer display with real-time auto-refresh
                 st.markdown(
                     f"""
-                    <div style="
+                    <div class="timer-container" style="
                         position: fixed;
                         top: 100px;
                         right: 20px;
@@ -358,7 +351,7 @@ def main():
                             color: #333;
                             margin-bottom: 5px;
                         ">⏰ TIME LEFT</div>
-                        <div style="
+                        <div data-testid="timer-display" style="
                             font-size: 24px;
                             font-weight: bold;
                             color: {timer_color};
@@ -368,19 +361,72 @@ def main():
                             font-size: 12px;
                             color: #666;
                             margin-top: 5px;
-                        ">Auto-updating</div>
+                        ">Live Clock</div>
                     </div>
                     """,
                     unsafe_allow_html=True
                 )
                 
-                # Auto-refresh every second for real-time timer updates
+                # Add a JavaScript timer that updates only the timer display
                 st.markdown(
-                    """
+                    f"""
                     <script>
-                    setTimeout(function() {
-                        window.location.reload();
-                    }, 1000);
+                    // Update timer every second without refreshing the page
+                    (function() {{
+                        let startTime = new Date().getTime();
+                        let examDuration = {exam_duration_minutes} * 60 * 1000; // Convert to milliseconds
+                        let timeRemaining = {int(remaining_time.total_seconds() * 1000)}; // Current remaining time in ms
+                        
+                        function updateTimer() {{
+                            if (timeRemaining <= 0) {{
+                                // Time's up - reload to trigger auto-submit
+                                window.location.reload();
+                                return;
+                            }}
+                            
+                            let hours = Math.floor(timeRemaining / (1000 * 60 * 60));
+                            let minutes = Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60));
+                            let seconds = Math.floor((timeRemaining % (1000 * 60)) / 1000);
+                            
+                            let timeString = String(hours).padStart(2, '0') + ':' + 
+                                           String(minutes).padStart(2, '0') + ':' + 
+                                           String(seconds).padStart(2, '0');
+                            
+                            // Find timer elements and update them
+                            let timerElements = document.querySelectorAll('[data-testid="timer-display"]');
+                            timerElements.forEach(function(element) {{
+                                if (element) {{
+                                    element.textContent = timeString;
+                                    
+                                    // Update colors based on time remaining
+                                    let container = element.closest('.timer-container');
+                                    if (container) {{
+                                        if (timeRemaining > 600000) {{ // More than 10 minutes
+                                            element.style.color = 'green';
+                                            container.style.backgroundColor = '#d4edda';
+                                            container.style.borderColor = '#c3e6cb';
+                                        }} else if (timeRemaining > 300000) {{ // More than 5 minutes
+                                            element.style.color = 'orange';
+                                            container.style.backgroundColor = '#fff3cd';
+                                            container.style.borderColor = '#ffeaa7';
+                                        }} else {{ // Less than 5 minutes
+                                            element.style.color = 'red';
+                                            container.style.backgroundColor = '#f8d7da';
+                                            container.style.borderColor = '#f5c6cb';
+                                        }}
+                                    }}
+                                }}
+                            }});
+                            
+                            timeRemaining -= 1000; // Subtract 1 second
+                        }}
+                        
+                        // Update immediately
+                        updateTimer();
+                        
+                        // Update every second
+                        setInterval(updateTimer, 1000);
+                    }})();
                     </script>
                     """,
                     unsafe_allow_html=True
@@ -390,12 +436,8 @@ def main():
                 if remaining_time.total_seconds() <= 60:
                     st.warning("⚠️ **Final Minute!** Time is running out!")
                 
-                # Also add a manual refresh mechanism
-                if st.button("🔄 Refresh Timer", key="refresh_timer", help="Click to update timer manually"):
-                    st.rerun()
-                
-                # Add note about timer updates
-                st.info("💡 **Timer Note:** Timer updates automatically every second. It also updates when you interact with the test.")
+                # Simple note about timer
+                st.info("💡 **Timer automatically refreshes every second - like a real exam clock**")
             else:
                 # Time's up - auto submit
                 st.error("⏰ Time's up! Submitting your test automatically...")
