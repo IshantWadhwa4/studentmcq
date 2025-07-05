@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 
 # GitHub configuration
-GITHUB_TOKEN = "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"  # Replace with your new token
+GITHUB_TOKEN = "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"  # Replace with your new token
 GITHUB_REPO = "IshantWadhwa4/data_tsmcq"
 GITHUB_PATH = "questions"  # Path where test files are stored
 RESULTS_PATH = "students_solution"  # Path where student results will be stored
