@@ -4,22 +4,22 @@ import requests
 import base64
 import time
 from datetime import datetime
+import os
 
 # GitHub configuration
-GITHUB_TOKEN = "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"  # Replace with your new token
 GITHUB_REPO = "IshantWadhwa4/data_tsmcq"
 GITHUB_PATH = "questions"  # Path where test files are stored
 RESULTS_PATH = "students_solution"  # Path where student results will be stored
 
-def load_test_from_github(exam_token):
+def load_test_from_github(test_id, student_token):
     """Load test data from GitHub repository"""
     try:
         # GitHub API endpoint
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_PATH}/{exam_token}.json"
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_PATH}/{test_id}.json"
         
         # Headers
         headers = {
-            "Authorization": f"token {GITHUB_TOKEN}",
+            "Authorization": f"token {student_token}",
             "Accept": "application/vnd.github.v3+json"
         }
         
@@ -37,12 +37,12 @@ def load_test_from_github(exam_token):
     except Exception as e:
         return False, f"Error loading test: {str(e)}"
 
-def save_student_result_to_github(result_data, student_name, exam_token):
+def save_student_result_to_github(result_data, student_name, test_id, student_token):
     """Save student result to GitHub repository"""
     try:
         # Create filename with timestamp
         timestamp = int(time.time())
-        filename = f"{student_name}_{exam_token}_{timestamp}.json"
+        filename = f"{student_name}_{test_id}_{timestamp}.json"
         
         # GitHub API endpoint
         url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{RESULTS_PATH}/{filename}"
@@ -53,14 +53,14 @@ def save_student_result_to_github(result_data, student_name, exam_token):
         
         # API request data
         data = {
-            "message": f"Add student result: {student_name} - {exam_token}",
+            "message": f"Add student result: {student_name} - {test_id}",
             "content": encoded_content,
             "branch": "main"  # or your default branch
         }
         
         # Headers
         headers = {
-            "Authorization": f"token {GITHUB_TOKEN}",
+            "Authorization": f"token {student_token}",
             "Accept": "application/vnd.github.v3+json"
         }
         
@@ -212,25 +212,24 @@ def main():
                 email = st.text_input("Email (Optional)", help="Enter your email address")
             with col2:
                 student_id = st.text_input("Student ID (Optional)", help="Enter your student ID")
-                exam_token = st.text_input("Exam Token*", help="Enter the exam token provided by your teacher")
+                test_id = st.text_input("Test ID*", help="Enter the Test ID provided by your teacher (e.g., AMIT_20250105_33)")
             
-            # GitHub configuration (Display only)
-            st.markdown("### 📂 GitHub Configuration")
-            col3, col4 = st.columns(2)
-            with col3:
-                st.info(f"Repository: {GITHUB_REPO}")
-            with col4:
-                st.info(f"Test Path: {GITHUB_PATH}")
+            # Student Token (GitHub Token)
+            student_token = st.text_input(
+                "Student Token*",
+                type="password",
+                help="Enter your GitHub Personal Access Token"
+            )
             
             submit_button = st.form_submit_button("📖 Load Test", type="primary")
             
             if submit_button:
-                if not student_name or not exam_token:
+                if not student_name or not test_id or not student_token:
                     st.error("Please fill in all required fields (marked with *)")
                 else:
                     # Load test
                     with st.spinner("Loading test..."):
-                        success, test_data = load_test_from_github(exam_token)
+                        success, test_data = load_test_from_github(test_id, student_token)
                         
                         if success:
                             st.session_state.test_loaded = True
@@ -239,7 +238,8 @@ def main():
                                 "name": student_name,
                                 "email": email,
                                 "student_id": student_id,
-                                "exam_token": exam_token
+                                "test_id": test_id,
+                                "student_token": student_token
                             }
                             st.success("✅ Test loaded successfully!")
                             st.rerun()
@@ -251,19 +251,30 @@ def main():
         test_data = st.session_state.test_data
         student_info = st.session_state.student_info
         
-        # Test header
+        # Test header with teacher information
         st.header(f"📖 {test_data['subject']} Test")
         
-        col1, col2, col3 = st.columns(3)
+        # Display teacher and test information
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.info(f"**Subject:** {test_data['subject']}")
+            st.info(f"**Teacher:** {test_data.get('teacher_name', 'Unknown')}")
         with col2:
-            st.info(f"**Questions:** {len(test_data['questions'])}")
+            st.info(f"**Subject:** {test_data['subject']}")
         with col3:
+            st.info(f"**Questions:** {len(test_data['questions'])}")
+        with col4:
             st.info(f"**Difficulty:** {test_data['difficulty']}")
         
         if test_data.get('topics'):
             st.info(f"**Topics:** {', '.join(test_data['topics'])}")
+        
+        # Display test creation date
+        if test_data.get('created_at'):
+            try:
+                created_date = datetime.fromisoformat(test_data['created_at'].replace('Z', '+00:00'))
+                st.info(f"**Created:** {created_date.strftime('%Y-%m-%d %H:%M')}")
+            except:
+                st.info(f"**Created:** {test_data['created_at']}")
         
         st.markdown("---")
         
@@ -291,12 +302,14 @@ def main():
                     "student_name": student_info['name'],
                     "student_email": student_info['email'],
                     "student_id": student_info['student_id'],
-                    "exam_token": student_info['exam_token'],
+                    "test_id": student_info['test_id'],
+                    "teacher_name": test_data.get('teacher_name', 'Unknown'),
                     "test_info": {
                         "subject": test_data['subject'],
                         "topics": test_data.get('topics', []),
                         "difficulty": test_data['difficulty'],
-                        "created_at": test_data['created_at']
+                        "created_at": test_data['created_at'],
+                        "total_questions": test_data.get('total_questions', len(questions))
                     },
                     "completed_at": datetime.now().isoformat(),
                     "score": score_data
@@ -306,7 +319,8 @@ def main():
                 success, message = save_student_result_to_github(
                     result_data, 
                     student_info['name'].replace(' ', '_'), 
-                    student_info['exam_token']
+                    student_info['test_id'],
+                    student_info['student_token']
                 )
                 
                 if success:
@@ -323,16 +337,6 @@ def main():
     elif st.session_state.test_completed:
         display_results(st.session_state.score_data)
         
-        # Download results
-        if st.button("📥 Download Results"):
-            result_json = json.dumps(st.session_state.score_data, indent=2)
-            st.download_button(
-                label="Download Results (JSON)",
-                data=result_json,
-                file_name=f"test_results_{int(time.time())}.json",
-                mime="application/json"
-            )
-        
         # Reset test
         if st.button("🔄 Take Another Test"):
             st.session_state.test_loaded = False
@@ -345,24 +349,31 @@ def main():
     with st.expander("ℹ️ How to take the test"):
         st.markdown("""
         ### Steps to take the test:
-        1. **Enter Information**: Fill in your name and exam token (email and student ID are optional)
-        2. **Load Test**: Click "Load Test" to fetch the test questions
-        3. **Answer Questions**: Read each question carefully and select your answer
-        4. **Complete Test**: Click "Finish Test" when you've answered all questions
-        5. **View Results**: Get your score and detailed explanations
+        1. **Enter Information**: Fill in your name and Test ID (email and student ID are optional)
+        2. **Student Token**: Enter your GitHub Personal Access Token
+        3. **Load Test**: Click "Load Test" to fetch the test questions
+        4. **Answer Questions**: Read each question carefully and select your answer
+        5. **Complete Test**: Click "Finish Test" when you've answered all questions
+        6. **View Results**: Get your score and detailed explanations
+        
+        ### Test ID Format:
+        - Test IDs follow the format: `TEACHERNAME_YYYYMMDD_XX`
+        - Example: `AMIT_20250105_33`
+        - Get this from your teacher
         
         ### Important Notes:
         - Make sure to answer all questions before finishing
         - You can review your answers before submitting
         - Results are automatically saved to GitHub
         - Explanations are provided for each question
+        - The test shows teacher name and creation date
         
         ### Features:
         - ✅ Interactive test interface
+        - ✅ Teacher and test information display
         - ✅ Instant scoring and feedback
         - ✅ Detailed explanations for each answer
         - ✅ Results saved to GitHub
-        - ✅ Downloadable results
         """)
 
 if __name__ == "__main__":
